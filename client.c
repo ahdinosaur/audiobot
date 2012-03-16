@@ -21,14 +21,18 @@ int main (void)
     char input[MAX_MESSAGE];
     char * reply;
     while (1) {
-        
+
+        /* print prompt for user */
+        printf("request: ");
         /* get input from user */
         fgets (input, MAX_MESSAGE, stdin);
+        /* strip newline */
+        input[strlen(input) - 1] = '\0';
 
         s_send(requester, input);
 
         reply = s_recv (requester);
-        printf("%s", reply);
+        printf("response: %s\n", reply);
         free(reply);
     }
     zmq_close (requester);
