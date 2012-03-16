@@ -12,10 +12,10 @@ audiobot receives requests via the request/response paradigm in zeromq and servi
 
 ### example requests
 
-   "play http://mymusicsite.com/song.mp3"
-   "volume 0.55"
-   "pause"
-   "seek 10:20"
+    "play http://mymusicsite.com/song.mp3"
+    "volume 0.55"
+    "pause"
+    "seek 10:20"
 
 ## libraries used
 
