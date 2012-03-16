@@ -11,7 +11,7 @@ simulataneously:
     % ./client
     connecting to tcp://localhost:5555
     request: hi, i'm a message
-    response: hi, i'm a message                                                        request: ^C  
+    response: hi, i'm a message                                                        request: ^C
 
     % while IFS= read -r song; do ./server "file:///storage/Music/$song"; done < <(ls /storage/Music/ | shuf)
     version: GStreamer 0.10.35 !
