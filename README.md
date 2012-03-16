@@ -16,7 +16,7 @@ simulataneously:
 
     % while IFS= read -r song; do ./server "file:///storage/Music/$song"; done < <(ls /storage/Music/ | shuf)
     version: GStreamer 0.10.35 !
-    12-03-16 03:58:24 now playing: file:///storage/Music/MasterMusic/CompiledBest/5 St ars/Swede Dreams.mp3
+    12-03-16 03:58:24 now playing: file:///storage/Music/Swede Dreams.mp3
     12-03-16 03:59:19 message: hi, i'm a message
     ^C
     
