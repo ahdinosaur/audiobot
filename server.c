@@ -1,5 +1,9 @@
-#include <stdio.h>
 #include <gst/gst.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <string.h>
+#include <zmq.h>
+#include "zhelpers.h"
 
 static GMainLoop *loop;
 
@@ -8,7 +12,7 @@ my_bus_callback (GstBus     *bus,
          GstMessage *message,
          gpointer    data)
 {
-  g_print ("Got %s message\n", GST_MESSAGE_TYPE_NAME (message));
+  //g_print ("Got %s message\n", GST_MESSAGE_TYPE_NAME (message));
 
   switch (GST_MESSAGE_TYPE (message)) {
     case GST_MESSAGE_ERROR: {
@@ -100,7 +104,7 @@ main (gint   argc,
   else
     nano_str = "";
 
-  printf ("Now using GStreamer %d.%d.%d %s!\n",
+  printf ("version: GStreamer %d.%d.%d %s!\n",
           major, minor, micro, nano_str);
 
   /* make sure we have input */
@@ -116,8 +120,10 @@ main (gint   argc,
   gst_bus_add_watch (bus, my_bus_callback, loop);
   gst_object_unref (bus);
 
-  src = gst_element_make_from_uri(GST_URI_SRC, argv[1], "source");
-  //g_object_set (G_OBJECT (src), "uri", argv[1], NULL);
+  const gchar *uri;
+  uri =  argv[1];
+  s_console ("now playing: %s\n", uri);
+  src = gst_element_make_from_uri(GST_URI_SRC, uri, "source");
   dec = gst_element_factory_make ("decodebin", "decoder");
   g_signal_connect (dec, "new-decoded-pad", G_CALLBACK (cb_newpad), NULL);
   gst_bin_add_many (GST_BIN (pipeline), src, dec, NULL);
@@ -137,11 +143,41 @@ main (gint   argc,
 
   /* run */
   gst_element_set_state (pipeline, GST_STATE_PLAYING);
-  g_main_loop_run (loop);
+
+  /* initialize zeromq */
+
+  void *context = zmq_init (1);
+
+  //  Socket to talk to clients
+  void *responder = zmq_socket (context, ZMQ_REP);
+  zmq_bind (responder, "tcp://*:5555");
+
+  /* start request/response loop */
+
+  while (1)
+  {
+    //  Wait for next request from client
+    char * request = s_recv (responder);
+
+    //  Do some 'work'
+    s_console("message: %s", request);
+
+    //  Send reply back to client
+    s_send(responder, request);
+
+    //  Free request
+    free(request);
+  }
 
   /* cleanup */
+
+  /** gstreamer */
   gst_element_set_state (pipeline, GST_STATE_NULL);
   gst_object_unref (GST_OBJECT (pipeline));
+
+  /** zmq */
+  zmq_close (responder);
+  zmq_term (context);
 
   return 0;
 }
