@@ -124,6 +124,9 @@ make_pipeline ( gchar * uri )
 }
 
 /* zmq-related functions */
+
+
+
 void reqres(void * zmqsock)
 {
   //  Wait for next request from client
@@ -168,7 +171,6 @@ main (gint   argc,
   void *zmq_sock = zmq_socket (zmq_context, ZMQ_REP);
   zmq_bind (zmq_sock, "tcp://*:5555");
 
-
   /* set poll fn to operate on zmq or unix sockets */
   g_main_context_set_poll_func( g_context, (GPollFunc) zmq_poll );
 
@@ -182,6 +184,9 @@ main (gint   argc,
   zmq_item[0].events = ZMQ_POLLIN;
 
   g_source_add_poll( g_source, (GPollFD *) zmq_item );
+
+  /* add callback */
+  zmq_callback = 
 
   g_source_attach( g_source, g_context );
 
