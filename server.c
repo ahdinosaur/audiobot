@@ -5,6 +5,7 @@
 #include <zmq.h>
 #include "zhelpers.h"
 #include "utils.h"
+#include <poll.h>
 
 /* gstreamer-related functions */
 
@@ -125,9 +126,8 @@ make_pipeline ( gchar * uri )
 
 /* zmq-related functions */
 
-
-
-void reqres(void * zmqsock)
+static gboolean
+respond(gpointer zmqsock)
 {
   //  Wait for next request from client
   char * request;
@@ -142,7 +142,52 @@ void reqres(void * zmqsock)
   //  Free request
   free(request);
 
-  return;
+  return TRUE;
+}
+
+static gboolean
+zmq_fd_prepare(GSource *source,
+           gint *timeout)
+{
+  *timeout = -1;
+  return FALSE;
+}
+
+static gboolean
+zmq_fd_check (GSource *source)
+{
+  return TRUE;
+}
+
+static gboolean
+zmq_fd_dispatch(GSource* source, GSourceFunc callback, gpointer user_data)
+{
+  callback(user_data);
+}
+
+static GSourceFuncs 
+zmq_source_funcs()
+{
+  GSourceFuncs r = { zmq_fd_prepare, zmq_fd_check, zmq_fd_dispatch, NULL, NULL, NULL };
+  return r;
+}
+
+
+gint zmq_poll_adapter(GPollFD *ufds, guint nfsd, gint timeout_)
+{
+    zmq_pollitem_t ufds0[nfsd];
+
+    int i;
+    for (i = 0; i < nfsd; i++)
+    {
+        ufds0[i].socket = NULL;
+        ufds0[i].fd = ufds[i].fd;
+        ufds0[i].events = ufds[i].events;
+        ufds0[i].revents = ufds[i].revents;
+
+    }
+
+    zmq_poll(ufds0, nfsd, timeout_);
 }
 
 /* main */
@@ -156,51 +201,59 @@ main (gint   argc,
 
   /* init GStreamer */
   gst_init (&argc, &argv);
-  loop = g_main_loop_new (NULL, FALSE);
 
-  /* get main context */
+  /** get main context */
   GMainContext * g_context;
-  g_context = g_main_context_new();
+  g_context = g_main_context_new ();
+
+  /** get main loop */
+  loop = g_main_loop_new ( g_context, FALSE );
 
   /* initialize zeromq */
 
   /** zmq main context */
-  void *zmq_context = zmq_init (1);
+  gpointer zmq_context = zmq_init (1);
 
-  //  Socket to talk to clients
-  void *zmq_sock = zmq_socket (zmq_context, ZMQ_REP);
+  /** intialize socket to talk to clients */
+  gpointer zmq_sock = zmq_socket (zmq_context, ZMQ_REP);
   zmq_bind (zmq_sock, "tcp://*:5555");
 
-  /* set poll fn to operate on zmq or unix sockets */
-  g_main_context_set_poll_func( g_context, (GPollFunc) zmq_poll );
+  /* make zmq socket into a source for glib */
 
-  /* make new gsource */
+  /** set poll fn to operate on zmq or unix sockets */
+  g_main_context_set_poll_func( g_context, (GPollFunc) zmq_poll_adapter );
+
+  /** make new gsource */
   GSource * g_source;
-  g_source = g_timeout_source_new (1);
+  GSourceFuncs g_source_funcs;
+  g_source_funcs = zmq_source_funcs();
+  g_source = g_source_new ( &g_source_funcs, sizeof(GSource) );
 
-  /* add zmq socket to be polled */
-  zmq_pollitem_t zmq_item[1];
-  zmq_item[0].socket = zmq_sock;
-  zmq_item[0].events = ZMQ_POLLIN;
+  /** add zmq socket to be polled */
+  zmq_pollitem_t zmq_item;
+  zmq_item.socket = zmq_sock;
+  zmq_item.events = ZMQ_POLLIN;
 
-  g_source_add_poll( g_source, (GPollFD *) zmq_item );
+  g_source_add_poll( g_source, (GPollFD *) &zmq_item );
 
-  /* add callback */
-  zmq_callback = 
+  /** add callback */
+  g_source_set_callback( g_source, (GSourceFunc) respond, zmq_sock, NULL );
 
   g_source_attach( g_source, g_context );
 
-  // GstElement * pipeline
-  GstElement * pipeline;
-  pipeline = make_pipeline( argv[1] );
+  //GstElement * pipeline;
+  //pipeline = make_pipeline( argv[1] );
 
   g_main_loop_run ( loop );
 
   /* cleanup */
 
   /** gstreamer */
-  gst_element_set_state (pipeline, GST_STATE_NULL);
-  gst_object_unref (GST_OBJECT (pipeline));
+  //gst_element_set_state (pipeline, GST_STATE_NULL);
+  //gst_object_unref (GST_OBJECT (pipeline));
+
+  g_main_loop_unref ( loop );
+  g_main_context_unref ( g_context );
 
   /** zmq */
   zmq_close (zmq_sock);
@@ -213,34 +266,5 @@ main (gint   argc,
 //int zmq_poll (void *socket, int option_name, void *option_value, size_t *option_len)
 //{
 //  return (( ZMQ_POLLING & getsockopt( socket, ZMQ_EVENTS, option_value, option_len )) != 0 );
-//}
-
-//GSource
-//zmq_source()
-//{
-//  
-//}
-
-//static gboolean
-//zmq_fd_prepare(GSource *source,
-//           gint *timeout)
-//{
-//  *timeout = -1;
-//  return FALSE;
-//}
-//
-//static gboolean
-//zmq_fd_check (GSource *source)
-//{
-//  return TRUE;
-//}
-//
-//static gboolean
-//zmq_fd_dispatch(GSource* source, GSourceFunc callback, gpointer user_data)
-//{
-//  static gint counter = 0;
-//
-//  Display *dpy = ((x11_source_t*)source)->dpy;
-//  Window window = ((x11_source_t*)source)->w;
 //}
 
