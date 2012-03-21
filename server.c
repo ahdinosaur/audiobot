@@ -1,4 +1,5 @@
 #include <gst/gst.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
@@ -6,6 +7,8 @@
 #include "zhelpers.h"
 #include "utils.h"
 #include <poll.h>
+
+#define MAX_CHANNELS 20
 
 /* gstreamer-related functions */
 
@@ -126,18 +129,29 @@ make_pipeline ( gchar * uri )
 
 /* zmq-related functions */
 
-static gboolean
-respond(gpointer zmqsock)
+struct Control
 {
+    gpointer socket;
+    GSList ** channels;
+    guint n_channels;
+};
+
+gboolean
+respond(gpointer data)
+{
+  // unpack ctrl
+  struct Control * ctrl = (struct Control *) data;
+  gpointer sock = (*ctrl).socket;
+  
   //  Wait for next request from client
   char * request;
-  request = s_recv (zmqsock);
+  request = s_recv (sock);
 
   //  Do some 'work'
   s_console("message: %s", request);
 
   //  Send reply back to client
-  s_send(zmqsock, request);
+  s_send(sock, request);
 
   //  Free request
   free(request);
@@ -172,6 +186,25 @@ zmq_source_funcs()
   return r;
 }
 
+/* make control object */
+gpointer
+p_make_control ( gpointer sock )
+{
+  guint n_chans = MAX_CHANNELS;
+  
+  struct Control * ctrl = malloc ( sizeof ( * ctrl ) );
+  (*ctrl).socket = sock;
+  (*ctrl).channels = malloc ( n_chans * sizeof ( GList ) );
+  (*ctrl).n_channels = n_chans;
+
+  // make channels
+  // populate control with empty channels
+  gint i = 0;
+  for ( i = 0; i < n_chans; i++ )
+      (*ctrl).channels[i] = g_slist_alloc ();
+
+  return (gpointer) ctrl;
+}
 
 gint zmq_poll_adapter(GPollFD *ufds, guint nfsd, gint timeout_)
 {
@@ -199,7 +232,7 @@ main (gint   argc,
 
   print_version ();
 
-  /* init GStreamer */
+  /* initialize gstreamer */
   gst_init (&argc, &argv);
 
   /** get main context */
@@ -233,11 +266,17 @@ main (gint   argc,
   zmq_pollitem_t zmq_item;
   zmq_item.socket = zmq_sock;
   zmq_item.events = ZMQ_POLLIN;
-
   g_source_add_poll( g_source, (GPollFD *) &zmq_item );
 
+  /** make control to be used by callback */
+  gpointer p_control;
+  p_control = p_make_control( zmq_sock );
+
+
+    
+
   /** add callback */
-  g_source_set_callback( g_source, (GSourceFunc) respond, zmq_sock, NULL );
+  g_source_set_callback( g_source, (GSourceFunc) respond, p_control, NULL );
 
   g_source_attach( g_source, g_context );
 
