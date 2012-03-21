@@ -9,6 +9,7 @@
 #include <poll.h>
 
 #define MAX_CHANNELS 20
+#define ARG_SEP ' '
 
 /* gstreamer-related functions */
 
@@ -129,6 +130,37 @@ make_pipeline ( gchar * uri )
 
 /* zmq-related functions */
 
+void
+p_play ( gchar ** args, GSList ** channels, guint n_channels )
+{
+
+    printf( "playing %s in channel %s", args[1], args[0] );
+    
+    //GstElement * pipeline;
+    //pipeline = make_pipeline(  );
+}
+
+void
+p_dispatch ( gchar * request, GSList ** channels, guint n_channels )
+{
+  // divide message into [fn ..args]
+  gchar sep = ARG_SEP;
+  gchar ** fn_args = g_strsplit( request, &sep, 1 );
+
+  // split function and args
+  gchar * fn = (*fn_args);
+  gchar ** args = fn_args + 1;
+
+  if ( ! g_strcmp0 ( fn, "play" ))
+  {
+      p_play ( args, channels, n_channels );
+  }
+  else
+  {
+      g_warning ( "did not understand message: %s", request );
+  }
+}
+
 struct Control
 {
     gpointer socket;
@@ -137,18 +169,23 @@ struct Control
 };
 
 gboolean
-respond(gpointer data)
+p_respond(gpointer data)
 {
   // unpack ctrl
   struct Control * ctrl = (struct Control *) data;
   gpointer sock = (*ctrl).socket;
+  GSList ** channels = (*ctrl).channels;
+  guint n_channels = (*ctrl).n_channels;
   
   //  Wait for next request from client
-  char * request;
+  gchar * request;
   request = s_recv (sock);
 
-  //  Do some 'work'
-  s_console("message: %s", request);
+  //  Log raw request
+  g_message ( "received message: %s", request );
+
+  //  Dispatch request
+  p_dispatch ( request, channels, n_channels );
 
   //  Send reply back to client
   s_send(sock, request);
@@ -270,18 +307,13 @@ main (gint   argc,
 
   /** make control to be used by callback */
   gpointer p_control;
-  p_control = p_make_control( zmq_sock );
-
-
-    
+  p_control = p_make_control( zmq_sock );    
 
   /** add callback */
-  g_source_set_callback( g_source, (GSourceFunc) respond, p_control, NULL );
+  g_source_set_callback( g_source, (GSourceFunc) p_respond, p_control, NULL );
 
   g_source_attach( g_source, g_context );
 
-  //GstElement * pipeline;
-  //pipeline = make_pipeline( argv[1] );
 
   g_main_loop_run ( loop );
 
