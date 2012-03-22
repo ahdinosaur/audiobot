@@ -9,7 +9,7 @@
 #include <poll.h>
 
 #define MAX_CHANNELS 20
-#define ARG_SEP ' '
+#define ARG_DELIMS " "
 
 /* gstreamer-related functions */
 
@@ -103,7 +103,6 @@ make_pipeline ( gchar * uri )
   gst_bus_add_watch (bus, my_bus_callback, loop);
   gst_object_unref (bus);
 
-  s_console ("now playing: %s\n", uri);
   src = gst_element_make_from_uri(GST_URI_SRC, uri, "source");
   dec = gst_element_factory_make ("decodebin", "decoder");
   g_signal_connect (dec, "new-decoded-pad", G_CALLBACK (cb_newpad), NULL);
@@ -122,38 +121,74 @@ make_pipeline ( gchar * uri )
   gst_object_unref (audiopad);
   gst_bin_add (GST_BIN (pipeline), audio);
 
-  /* run */
-  gst_element_set_state (pipeline, GST_STATE_PLAYING);
+  g_message ("now playing: %s\n", uri);
   
   return pipeline;
 }
 
 /* zmq-related functions */
 
-void
-p_play ( gchar ** args, GSList ** channels, guint n_channels )
+struct Control
 {
+    gpointer socket;
+    GHashTable * channels;
+};
 
-    printf( "playing %s in channel %s", args[1], args[0] );
-    
-    //GstElement * pipeline;
-    //pipeline = make_pipeline(  );
+void
+p_play ( gchar ** args, GHashTable * channels )
+{
+    gchar * chan_name = args[0];
+    gchar * uri = args[1];
+
+    if (chan_name == NULL || uri == NULL)
+    {
+        g_warning ("play was given null args");
+        return;
+    }
+
+    /* see if channel exists? */
+    GQueue * channel;
+    channel =  (GQueue *) g_hash_table_lookup ( channels, chan_name );
+    if ( channel == NULL )
+    {
+        // make new channel
+        channel = g_queue_new ();
+    }
+    assert ( channel != NULL );
+
+    /* make musical pipeline from desired uri */
+    GstElement * pipeline;
+    pipeline = make_pipeline ( uri );
+    assert ( pipeline );
+
+    /* add pipeline to the desired channel */
+    g_queue_push_head ( channel, (gpointer) pipeline );
+
+
+
+    /* play pipeline */
+    gst_element_set_state (pipeline, GST_STATE_PLAYING );
+
+    return;
 }
 
 void
-p_dispatch ( gchar * request, GSList ** channels, guint n_channels )
+p_dispatch ( gchar * request, GHashTable * channels )
 {
   // divide message into [fn ..args]
-  gchar sep = ARG_SEP;
-  gchar ** fn_args = g_strsplit( request, &sep, 1 );
+  gchar * sep = ARG_DELIMS;
+  gchar ** fn_args = g_strsplit( request, sep, -1 );
 
   // split function and args
   gchar * fn = (*fn_args);
+  // TODO: make SAFE
   gchar ** args = fn_args + 1;
+
+  g_debug ("fn=[%s]", fn);
 
   if ( ! g_strcmp0 ( fn, "play" ))
   {
-      p_play ( args, channels, n_channels );
+      p_play ( args, channels );
   }
   else
   {
@@ -161,21 +196,13 @@ p_dispatch ( gchar * request, GSList ** channels, guint n_channels )
   }
 }
 
-struct Control
-{
-    gpointer socket;
-    GSList ** channels;
-    guint n_channels;
-};
-
 gboolean
 p_respond(gpointer data)
 {
   // unpack ctrl
   struct Control * ctrl = (struct Control *) data;
   gpointer sock = (*ctrl).socket;
-  GSList ** channels = (*ctrl).channels;
-  guint n_channels = (*ctrl).n_channels;
+  GHashTable * channels = (*ctrl).channels;
   
   //  Wait for next request from client
   gchar * request;
@@ -185,7 +212,7 @@ p_respond(gpointer data)
   g_message ( "received message: %s", request );
 
   //  Dispatch request
-  p_dispatch ( request, channels, n_channels );
+  p_dispatch ( request, channels );
 
   //  Send reply back to client
   s_send(sock, request);
@@ -227,18 +254,11 @@ zmq_source_funcs()
 gpointer
 p_make_control ( gpointer sock )
 {
-  guint n_chans = MAX_CHANNELS;
-  
   struct Control * ctrl = malloc ( sizeof ( * ctrl ) );
   (*ctrl).socket = sock;
-  (*ctrl).channels = malloc ( n_chans * sizeof ( GList ) );
-  (*ctrl).n_channels = n_chans;
-
-  // make channels
-  // populate control with empty channels
-  gint i = 0;
-  for ( i = 0; i < n_chans; i++ )
-      (*ctrl).channels[i] = g_slist_alloc ();
+  //TODO write destroy funcs for key,value
+  // http://developer.gnome.org/glib/unstable/glib-Hash-Tables.html#g-hash-table-new-full
+  (*ctrl).channels = g_hash_table_new_full ( g_str_hash, g_str_equal, NULL, NULL );
 
   return (gpointer) ctrl;
 }
