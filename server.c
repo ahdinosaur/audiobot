@@ -1,12 +1,12 @@
-#include <gst/gst.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <assert.h>
+#include <gst/gst.h>
 #include <zmq.h>
-#include "zhelpers.h"
+#include <czmq.h>
 #include "utils.h"
-#include <poll.h>
 
 #define MAX_CHANNELS 20
 #define ARG_DELIMS " "
@@ -172,17 +172,23 @@ p_play ( gchar ** args, GHashTable * channels )
     return;
 }
 
-void
-p_dispatch ( gchar * request, GHashTable * channels )
-{
-  // divide message into [fn ..args]
-  gchar * sep = ARG_DELIMS;
-  gchar ** fn_args = g_strsplit( request, sep, -1 );
 
-  // split function and args
-  gchar * fn = (*fn_args);
-  // TODO: make SAFE
-  gchar ** args = fn_args + 1;
+
+/* Given a request, returns a response */
+zmsg_t *
+p_respond ( zmsg_t * request, GHashTable * channels )
+{
+  // Split request into fn ...args
+  gchar * fn;
+  fn = zmsg_popstr ( request );
+
+  size_t n_args = zmsg_size (request);
+  gchar ** args = malloc ( (n_args + 1) * sizeof ( gchar * ));
+  gint i;
+  for ( i = 0; i < n_args; i++ )
+  {
+      args[i] = zmsg_popstr ( request );
+  }
 
   g_debug ("fn=[%s]", fn);
 
@@ -192,12 +198,14 @@ p_dispatch ( gchar * request, GHashTable * channels )
   }
   else
   {
-      g_warning ( "did not understand message: %s", request );
+      g_warning ( "undefined function: %s", fn );
   }
 }
 
+
+
 gboolean
-p_respond(gpointer data)
+p_cycle(gpointer data)
 {
   // unpack ctrl
   struct Control * ctrl = (struct Control *) data;
@@ -205,20 +213,20 @@ p_respond(gpointer data)
   GHashTable * channels = (*ctrl).channels;
   
   //  Wait for next request from client
-  gchar * request;
-  request = s_recv (sock);
+  zmsg_t * request;
+  request = zmsg_recv ( sock );
 
   //  Log raw request
-  g_message ( "received message: %s", request );
 
-  //  Dispatch request
-  p_dispatch ( request, channels );
+  //  Send request and get response
+  zmsg_t * response;
+  response = p_respond ( request, channels );
+
+  //  Destroy request
+  zmsg_destroy ( &request );
 
   //  Send reply back to client
-  s_send(sock, request);
-
-  //  Free request
-  free(request);
+  zmsg_send ( sock, request );
 
   return TRUE;
 }
@@ -330,7 +338,7 @@ main (gint   argc,
   p_control = p_make_control( zmq_sock );    
 
   /** add callback */
-  g_source_set_callback( g_source, (GSourceFunc) p_respond, p_control, NULL );
+  g_source_set_callback( g_source, (GSourceFunc) p_cycle, p_control, NULL );
 
   g_source_attach( g_source, g_context );
 

@@ -1,5 +1,5 @@
 C=gcc
-LIBS=`pkg-config gstreamer-0.10 --libs` -lzmq
+LIBS=`pkg-config gstreamer-0.10 --libs` -lzmq -lczmq
 CFLAGS=`pkg-config gstreamer-0.10 --cflags`
 
 all: server.o client.o test.o
