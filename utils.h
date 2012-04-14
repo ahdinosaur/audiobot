@@ -1,4 +1,5 @@
-void print_version ()
+void
+print_version ()
 {
   const gchar *nano_str;
   guint major, minor, micro, nano;
@@ -16,5 +17,11 @@ void print_version ()
           major, minor, micro, nano_str);
 
   return;
+}
+
+void
+p_null_args ( gchar * fn )
+{
+    g_warning ( "%s() was given null args" );
 }
 
