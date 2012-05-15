@@ -11,79 +11,21 @@
 #include "pipeline.h"
 #include "channel.h"
 #include "utils.h"
+#include "commands.h"
 
 #define MAX_CHANNELS 20
 #define ARG_DELIMS " "
-
-void
-p_play ( gchar ** args, GHashTable * channels )
-{
-    gchar * chan_name = args[0];
-    gchar * uri = args[1];
-
-    g_debug ( "play(%s, %s) called", chan_name, uri );
-
-    if (chan_name == NULL || uri == NULL)
-    {
-        p_null_args ( "play" );
-        return;
-    }
-
-    // get channel
-    GQueue * channel = p_get_channel ( channels, chan_name );
-    // if channel doesn't exist yet,
-    if ( channel == NULL )
-    {
-        // create new channel
-        channel = p_new_channel ();
-    }
-    // assert we have a channel
-    assert ( channel != NULL );
-
-    // make musical pipeline from desired uri
-    GstElement * pipeline;
-    pipeline = p_make_pipeline ( uri );
-    if ( pipeline )
-    {
-      g_message ("now playing: %s\n", uri);
-
-      /* add pipeline to the desired channel */
-      g_queue_push_head ( channel, (gpointer) pipeline );
-
-      /* play pipeline */
-      gst_element_set_state (pipeline, GST_STATE_PLAYING );
-    }
-    else
-    {
-      g_warning ("%s could not be played", uri);
-    }
-
-    return;
-}
-
-
-
-void
-p_stop ( gchar ** args, GHashTable * channels )
-{
-    gchar * chan_name = args[0];
-
-    g_debug ( "stop(%s) called", chan_name );
-    
-    if (chan_name == NULL)
-        p_null_args ( "stop" );
-
-}
-
 
 /* Given a request, returns a response */
 zmsg_t *
 p_respond ( zmsg_t * request, GHashTable * channels )
 {
-  // Split request into fn ...args
+  // Split request into:
+  // fn
   gchar * fn;
   fn = zmsg_popstr ( request );
 
+  // ..args
   size_t n_args = zmsg_size (request);
   gchar ** args = malloc ( (n_args + 1) * sizeof ( gchar * ));
   gint i;
@@ -91,17 +33,50 @@ p_respond ( zmsg_t * request, GHashTable * channels )
   {
       args[i] = zmsg_popstr ( request );
   }
+  // cleanup request
+  zmsg_destroy ( &request );
 
   g_debug ("fn=[%s]", fn);
 
+  // make response
+  zmsg_t * response = zmsg_new ();
+
+  // dispatch based on fn
   if ( ! g_strcmp0 ( fn, "play" ))
   {
-      p_play ( args, channels );
+    zmsg_addstr ( response, p_play ( args, channels ));
+  }
+  else if ( ! g_strcmp0 ( fn, "pause" ))
+  {
+    zmsg_addstr ( response, p_pause ( args, channels ));
+  }
+  else if ( ! g_strcmp0 ( fn, "stop" ))
+  {
+    zmsg_addstr ( response, p_stop ( args, channels ));
+  }
+  else if ( ! g_strcmp0 ( fn, "status" ))
+  {
+    zmsg_addstr ( response, p_status ( args, channels ));
+  }
+  else if ( ! g_strcmp0 ( fn, "push" ))
+  {
+    zmsg_addstr ( response, p_push ( args, channels ));
+  }
+  else if ( ! g_strcmp0 ( fn, "queue" ))
+  {
+    zmsg_addstr ( response, p_queue ( args, channels ));
+  }
+  else if ( ! g_strcmp0 ( fn, "skip" ))
+  {
+    zmsg_addstr ( response, p_skip ( args, channels ));
   }
   else
   {
-      g_warning ( "undefined function: %s", fn );
+    g_warning ( "undefined function: %s", fn );
+    zmsg_addstr ( response, "undefined function");
   }
+
+  return response;
 }
 
 
@@ -125,10 +100,10 @@ p_cycle(gpointer data)
   response = p_respond ( request, channels );
 
   //  Send reply back to client
-  zmsg_send ( sock, request );
+  zmsg_send ( &response, sock );
 
   //  Destroy request
-//  zmsg_destroy ( &request );
+  zmsg_destroy ( &response );
 
   return TRUE;
 }
@@ -196,8 +171,15 @@ gint
 main (gint   argc,
       gchar *argv[])
 {
+  if(setenv("G_MESSAGES_DEBUG", "all", 1) < 0)
+  {
+    g_error ( "Could not create environment variable.\n" );
+    return -1;
+  }
 
-  print_version ();
+  gchar * listen_addr = "tcp://*:5555";
+
+  log_version ( G_LOG_LEVEL_DEBUG );
 
   /* initialize gstreamer */
   gst_init (&argc, &argv);
@@ -212,11 +194,13 @@ main (gint   argc,
   /* initialize zeromq */
 
   /** zmq main context */
+  g_debug ( "zmq context started" );
   gpointer zmq_context = zmq_init (1);
 
   /** intialize socket to talk to clients */
+  g_message ( "zmq rep socket listening on %s", listen_addr);
   gpointer zmq_sock = zmq_socket (zmq_context, ZMQ_REP);
-  zmq_bind (zmq_sock, "tcp://*:5555");
+  zmq_bind (zmq_sock, listen_addr);
 
   /* make zmq socket into a source for glib */
 
@@ -250,7 +234,6 @@ main (gint   argc,
   /* cleanup */
 
   /** gstreamer */
-  //gst_element_set_state (pipeline, GST_STATE_NULL);
   //gst_object_unref (GST_OBJECT (pipeline));
 
   g_main_loop_unref ( loop );
@@ -262,10 +245,3 @@ main (gint   argc,
 
   return 0;
 }
-
-
-//int zmq_poll (void *socket, int option_name, void *option_value, size_t *option_len)
-//{
-//  return (( ZMQ_POLLING & getsockopt( socket, ZMQ_EVENTS, option_value, option_len )) != 0 );
-//}
-

@@ -1,9 +1,10 @@
 void
-print_version ()
+log_version ( level )
 {
   const gchar *nano_str;
   guint major, minor, micro, nano;
 
+  // gst version
   gst_version (&major, &minor, &micro, &nano);
 
   if (nano == 1)
@@ -13,8 +14,17 @@ print_version ()
   else
     nano_str = ""; 
 
-  printf ("version: GStreamer %d.%d.%d %s!\n",
-          major, minor, micro, nano_str);
+  g_log ( G_LOG_DOMAIN, level,
+          ( "GStreamer version is %d.%d.%d %s" ),
+          major, minor, micro, nano_str );
+
+
+  // zmq version
+  zmq_version (&major, &minor, &micro);
+  
+  g_log ( G_LOG_DOMAIN, level,
+          "ØMQ version is %d.%d.%d",
+          major, minor, micro );
 
   return;
 }
