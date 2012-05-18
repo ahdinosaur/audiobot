@@ -70,6 +70,14 @@ p_respond ( zmsg_t * request, GHashTable * channels )
   {
     zmsg_addstr ( response, p_skip ( args, channels ));
   }
+  else if ( ! g_strcmp0 ( fn, "length" ))
+  {
+    zmsg_addstr ( response, p_length ( args, channels ));
+  }
+  else if ( ! g_strcmp0 ( fn, "now-playing" ))
+  {
+    zmsg_addstr ( response, p_now_playing ( args, channels ));
+  }
   else
   {
     g_warning ( "undefined function: %s", fn );

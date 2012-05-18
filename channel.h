@@ -18,12 +18,23 @@ p_new_channel ()
     return g_queue_new ();
 }
 
+guint
+p_channel_length ( GQueue * channel )
+{
+    return g_queue_get_length ( channel );
+}
+
+p_channel_length_by_name ( GHashTable * channels, gchar * chan_name )
+{
+    return p_channel_length ( p_get_channel ( channels, chan_name ) );
+}
+
 /* channel head */
 
 void
 p_channel_push_head ( GQueue * channel, GstElement * pipeline )
 {
-    g_debug ( "adding pipeline %p to channel %p head", &pipeline, &channel );
+    g_debug ( "adding pipeline %p to channel %p head", pipeline, channel );
     g_queue_push_head ( channel, (gpointer) pipeline );
 }
 
@@ -49,12 +60,19 @@ p_channel_peek_head ( GQueue * channel )
     return (GstElement *) g_queue_peek_head ( channel );
 }
 
+GstElement *
+p_channel_peek_head_by_name ( GHashTable * channels, gchar * chan_name )
+{
+    return p_channel_peek_head ( p_get_channel ( channels, chan_name ) );
+}
+
+
 /* channel tail */
 void
 p_channel_push_tail ( GQueue * channel, GstElement * pipeline )
 {
-    g_debug ( "adding pipeline %p to channel %p tail", &pipeline, &channel );
-    g_queue_push_tail ( channel, (gpointer) pipeline );
+    g_debug ( "adding pipeline %p to channel %p tail", pipeline, channel );
+    g_queue_push_tail ( channel, pipeline );
 }
 
 /* play, pause, stop, status channel */
@@ -65,7 +83,7 @@ p_play_channel ( GQueue * channel )
     GstElement * head = p_channel_peek_head ( channel );
     if (head)
     {
-        g_debug ("playing channel %p", &channel );
+        g_debug ("playing %p in channel %p", head, channel );
         return gst_element_set_state ( head, GST_STATE_PLAYING );
     }
     return 0;
@@ -85,7 +103,7 @@ p_pause_channel ( GQueue * channel )
     GstElement * head = p_channel_peek_head ( channel );
     if (head)
     {
-        g_debug ("pausing channel %p", &channel );
+        g_debug ("pausing %p in channel %p", head, channel );
         return gst_element_set_state ( head, GST_STATE_PAUSED );
     }
     return 0;
@@ -104,7 +122,7 @@ p_stop_channel ( GQueue * channel )
     GstElement * head = p_channel_peek_head ( channel );
     if (head)
     {
-        g_debug ("stopping channel %p", &channel );
+        g_debug ("stopping %p in channel %p", head, channel );
         return gst_element_set_state ( head, GST_STATE_NULL );
     }
     return 0;
@@ -127,9 +145,11 @@ p_channel_status ( GQueue * channel )
         GstStateChangeReturn status;
         status = gst_element_get_state ( head, &state, NULL, GST_CLOCK_TIME_NONE );
         
-        g_debug ( "state(%p) => %d of enum GstStateChangeReturn", &channel, status );
+        g_debug ( "state(%p) => %d of enum GstStateChangeReturn", channel, status );
 
         return state;
+    } else {
+        return -1;
     }
 }
 

@@ -121,7 +121,8 @@ p_push ( gchar ** args, GHashTable * channels )
       if ( p_channel_status ( channel ) == GST_STATE_PLAYING )
       {
           // remove head
-          p_channel_pop_head ( channel );
+          GstElement * head = p_channel_pop_head ( channel );
+          gst_object_unref ( GST_OBJECT ( head ) );
           // add new pipeline
           p_channel_push_head ( channel, pipeline );
           // continue playing
@@ -175,9 +176,8 @@ p_queue ( gchar ** args, GHashTable * channels )
     if ( pipeline )
     {
       // add new pipeline to channel
+      g_message ( "queueing %s on channel %s", uri, chan_name );
       p_channel_push_tail ( channel, pipeline );
-
-      g_message ( "queueing %s on channel %s", pipeline, channel );
     }
     else
     {
@@ -198,7 +198,8 @@ p_skip ( gchar ** args, GHashTable * channels )
         p_null_args ( "next" );
 
     // pop head
-    p_channel_pop_head_by_name ( channels, chan_name );
+    GstElement * head = p_channel_pop_head_by_name ( channels, chan_name );
+    gst_object_unref ( GST_OBJECT ( head ) );
     // play remaining pipelines
     GstStateChangeReturn change;
     change = p_play_channel_by_name ( channels, chan_name );
@@ -210,3 +211,30 @@ p_skip ( gchar ** args, GHashTable * channels )
         return "fail";
 }
 
+
+gchar *
+p_length ( gchar ** args, GHashTable * channels )
+{
+    gchar * chan_name = args[0];
+
+    if (chan_name == NULL)
+        p_null_args ( "length" );
+
+
+    guint len = p_channel_length_by_name ( channels, chan_name );
+    gchar * len_s = ( gchar * ) malloc ( 60 * sizeof(gchar) );
+    g_snprintf ( len_s, 60, "%d", len );
+    return len_s;
+}
+
+gchar *
+p_now_playing ( gchar ** args, GHashTable * channels )
+{
+    gchar * chan_name = args[0];
+
+    if (chan_name == NULL)
+        p_null_args ( "length" );
+
+    GstElement * head = p_channel_peek_head_by_name ( channels, chan_name  );
+    return gst_element_get_name ( head );
+}
